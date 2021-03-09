@@ -86,6 +86,7 @@ out = a
     vm = MIPSVM(program)
     vm.execute()
     assert vm.get_variable('o') == 22
+    assert vm.highest_register_used == 1
 
 
 def test_assign_precedence_2():
@@ -97,3 +98,4 @@ out = a
     vm = MIPSVM(program)
     vm.execute()
     assert vm.get_variable('o') == 24
+    assert vm.highest_register_used == 1

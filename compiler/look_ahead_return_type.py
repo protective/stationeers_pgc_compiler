@@ -3,23 +3,26 @@ from lark.lexer import Token
 
 from compiler.exceptions import MipsUnboundLocalError
 from compiler.expr_look_ahead import ExprLookAhead
-from compiler.types import Device, Variable, VarType
+from compiler.types import Device, Variable, VarType, FunctionBuiltIn
 
 
 class LAReturnType(ExprLookAhead):
 
-    def __init__(self, compiler, node):
-        self.compiler = compiler
+    def __init__(self, build_env, node):
+        super().__init__(build_env)
         self.return_type = self.visit(node)
+
 
     def call(self, expr):
 
         id = expr.children[0].children[0].value
-        args = expr.children[1]
-        if id in self.compiler.vtable:
+        if id in self.build_env.vtable:
             #    arguments = expr.children[1]
             #    ret = self.vtable[tree.children[0].value][1]
-            return self.compiler.vtable[id].var_type
+            if isinstance(self.build_env.vtable[id], FunctionBuiltIn):
+                return VarType
+            else:
+                return self.build_env.vtable[id].var_type
         else:
             raise MipsUnboundLocalError(str(id))
 
@@ -73,8 +76,8 @@ class LAReturnType(ExprLookAhead):
             self.visit(node)
 
     def var(self, var):
-        if var.children[0].value in self.compiler.device_table:
-            return self.compiler.device_table[var.children[0].value]
+        if var.children[0].value in self.build_env.device_table:
+            return self.build_env.device_table[var.children[0].value]
 
     def const_true(self, token):
         pass

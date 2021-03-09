@@ -18,7 +18,8 @@ except ImportError:
     sys.exit(1)
 
 grammar = None
-with open('compiler/gramma', 'r') as fd:
+
+with open(Path(__file__).parent / 'gramma', 'r') as fd:
     grammar = fd.read()
 
 
@@ -40,7 +41,10 @@ class Compiler:
         parser = Lark(grammar, start='root', parser='lalr', postlex=TreeIndenter())
         try:
             tree = parser.parse(program + os.linesep)
-        except (lark_exceptions.UnexpectedToken, lark_exceptions.UnexpectedCharacters) as exc:
+        except lark_exceptions.UnexpectedToken as exc:
+            msg = "Unexpected token %s at line %s, column %s.\n" % (exc.token.type, exc.line, exc.column)
+            raise MipsSyntaxError(msg)
+        except lark_exceptions.UnexpectedCharacters as exc:
             raise MipsSyntaxError(exc)
 
         if self.debug:
@@ -103,5 +107,7 @@ def compile_src(src: str, debug=False):
             for i, (line, desc) in enumerate(compiler.final_program):
                 output += f'{line}\n'
     except MipsException as exc:
+        return str(exc)
+    except Exception as exc:
         return str(exc)
     return output.strip()

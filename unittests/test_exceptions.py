@@ -1,6 +1,7 @@
 import pytest
 
-from compiler.exceptions import MipsUnboundLocalError, MipsAttributeError, MipsNameError, MipsSyntaxError
+from compiler.exceptions import MipsUnboundLocalError, MipsAttributeError, MipsNameError, MipsSyntaxError, MipsTypeErrorToManyArguments, \
+    MipsTypeErrorMissingArguments
 from unittests.mips_vm import MIPSVM
 
 
@@ -81,3 +82,34 @@ out = 1.Pressure
     with pytest.raises(MipsSyntaxError):
         vm = MIPSVM(program)
 
+
+def test_exception_arg_to_few_1():
+    program = """
+a = min(1)
+"""
+    with pytest.raises(MipsTypeErrorMissingArguments):
+        vm = MIPSVM(program)
+
+
+def test_exception_arg_to_few_2():
+    program = """
+a = abs()
+"""
+    with pytest.raises(MipsTypeErrorMissingArguments):
+        vm = MIPSVM(program)
+
+
+def test_exception_arg_to_many_1():
+    program = """
+a = rand(1)
+"""
+    with pytest.raises(MipsTypeErrorToManyArguments):
+        vm = MIPSVM(program)
+
+
+def test_exception_arg_to_many_2():
+    program = """
+a = min(1, 2, 3)
+"""
+    with pytest.raises(MipsTypeErrorToManyArguments):
+        vm = MIPSVM(program)

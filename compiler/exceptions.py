@@ -38,3 +38,13 @@ class MipsTypeError(MipsCodeError):
 class MipsAttributeCantSetError(MipsCodeError):
     def __init__(self, attrib):
         super().__init__(f"AttributeError: can't set attribute '{attrib}'")
+
+
+class MipsTypeErrorMissingArguments(MipsTypeError):
+    def __init__(self, function_name, no_args_missing):
+        super().__init__(f"TypeError: {function_name}() missing {no_args_missing} required positional argument")
+
+class MipsTypeErrorToManyArguments(MipsTypeError):
+    def __init__(self, function_name, no_args_required, no_args_given):
+        super().__init__(f"TypeError: {function_name}() takes {no_args_required} positional arguments but {no_args_given} were given")
+

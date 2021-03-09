@@ -1,13 +1,14 @@
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 
 from compiler.Visitor import Visitor
 from compiler.exceptions import MipsCodeError, MipsUnboundLocalError, MipsAttributeError, MipsNameError, \
-    MipsAttributeCantSetError
+    MipsAttributeCantSetError, MipsTypeErrorMissingArguments, MipsTypeErrorToManyArguments
 from compiler.look_ahead_can_assign import LACanAssign
 from compiler.look_ahead_can_branch import LACanBranch
 from compiler.look_ahead_expr_rearrange import LAExprRearrange
+from compiler.look_ahead_is_const import LAIsConst
 from compiler.look_ahead_return_type import LAReturnType
-from compiler.types import Device, Function, Variable
+from compiler.types import Device, Function, Variable, VarType, FunctionBuiltIn
 
 from lark import Tree
 from lark.lexer import Token
@@ -19,13 +20,35 @@ class InstBuilder(Visitor):
         self._free_register_counter = 0
         self.idtable = {'out': 'o'}
         self.device_table = {'db': Device('db', 'Socket')}
-        self.vtable = {'label': Function(self._label, Device()), 'device': Function(self._label, Device())}
+        self.vtable = {'label': Function(self._label, Device()),
+                       'device': Function(self._label, Device()),
+                       'min': FunctionBuiltIn('min', 2),
+                       'max': FunctionBuiltIn('max', 2),
+                       'mod': FunctionBuiltIn('mod', 2),
+                       'abs': FunctionBuiltIn('abs', 1),
+                       'asin': FunctionBuiltIn('asin', 1),
+                       'acos': FunctionBuiltIn('acos', 1),
+                       'sin': FunctionBuiltIn('sin', 1),
+                       'cos': FunctionBuiltIn('cos', 1),
+                       'tan': FunctionBuiltIn('tan', 1),
+                       'exp': FunctionBuiltIn('exp', 1),
+                       'floor': FunctionBuiltIn('floor', 1),
+                       'ceil': FunctionBuiltIn('ceil', 1),
+                       'trunc': FunctionBuiltIn('trunc', 1),
+                       'log': FunctionBuiltIn('log', 1),
+                       'rand': FunctionBuiltIn('rand', 0),
+                       'round': FunctionBuiltIn('round', 1),
+                       'sqrt': FunctionBuiltIn('sqrt', 1),
+
+                       'sleep': FunctionBuiltIn('sleep', 1, returns=False)
+                       }
+
         self.labels = {}
         self.label = 0
         self.program = []
 
     @contextmanager
-    def free_register(self, can_direct_access=None, store_dst=None):
+    def free_register(self, can_direct_access=None, eval_as_const=None, store_dst=None):
         """
         :param check_direct_access: Node to check if it can put it result directly into a register
         :param store_dst: if we already know the register to store the result we dont need a free register
@@ -35,17 +58,14 @@ class InstBuilder(Visitor):
         if store_dst:
             yield store_dst
             return
-
-        if can_direct_access:
-            if self._free_register_counter < 0 or self._free_register_counter > 15:
-                raise MipsCodeError(f'Invalid register r{self._free_register_counter}')
-            yield f'r{self._free_register_counter}'
+        if eval_as_const:
+            yield None
             return
-
+        free = self._free_register_counter
         self._free_register_counter += 1
-        if self._free_register_counter < 0 or self._free_register_counter > 15:
-            raise MipsCodeError(f'Invalid register r{self._free_register_counter}')
-        yield f'r{self._free_register_counter}'
+        if free < 0 or free > 15:
+            raise MipsCodeError(f'Invalid register r{free}')
+        yield f'r{free}'
         self._free_register_counter -= 1
 
     @property
@@ -87,7 +107,8 @@ class InstBuilder(Visitor):
 
         op = 'beq' if eq else 'bne'
 
-        self._add_instruction(f'{op} {condition} 0 {label_str}', f'Jump to {label_str} if {"not " if eq else ""}{condition}')
+        self._add_instruction(f'{op} {condition} 0 {label_str}',
+                              f'Jump to {label_str} if {"not " if eq else ""}{condition}')
         return label
 
     def _push_jump_inst(self, label=None):
@@ -184,7 +205,7 @@ class InstBuilder(Visitor):
         self._recursive_if_stmt(n_lst, exit_jump=None, is_expr=True, store_dst=store_dst)
         return store_dst
 
-    def _update_assignment_expr(self, src,  op, expr)->Tree:
+    def _update_assignment_expr(self, src, op, expr) -> Tree:
         return Tree('expr', [src, Token("", op[0]), expr])
 
     def assignment_stmt(self, stmt):
@@ -207,11 +228,10 @@ class InstBuilder(Visitor):
             # Get the destination by visit the id.
             dst = self.visit(id, assignment=True)
 
-        expr_can_assign = LACanAssign(expr).result
+        expr_can_assign = LACanAssign(self, expr).result
         store_dst = dst if dst in self.idtable.values() else None
-        with self.free_register(can_direct_access=expr_can_assign,
-                                store_dst=store_dst) as t0:
-            t0 = self.visit(expr, store_dst=t0)
+        with self.free_register(store_dst=store_dst) as s0:
+            t0 = self.visit(expr, store_dst=s0)
 
         if isinstance(dst, Device):
             self._save_attr(t0, dst, dst.property_access[0])
@@ -223,8 +243,8 @@ class InstBuilder(Visitor):
             test = stmt_lst[0]
             if_suite = stmt_lst[1]
 
-            can_branch = LACanBranch(test).result
-            with self.free_register(can_direct_access=LACanAssign(test).result) as t0:
+            can_branch = LACanBranch(self, test).result
+            with self.free_register(can_direct_access=LACanAssign(self, test).result) as t0:
                 con_jump_label = self._create_label() if can_branch else None
                 t0 = self.visit(test, store_dst=t0, branch_dst=con_jump_label)
             if not can_branch:
@@ -232,9 +252,11 @@ class InstBuilder(Visitor):
 
             # True
             if is_expr:
-                with self.free_register( can_direct_access=LACanAssign(if_suite).result, store_dst=store_dst):
+                can_assign = LACanAssign(self, if_suite).result
+                with self.free_register(can_direct_access=can_assign, store_dst=store_dst):
                     t0 = self.visit(if_suite, store_dst=store_dst)
-                self._push_copy_inst(src=t0, dst=self.cur_stack_dst(store_dst))
+                if not can_assign:
+                    self._push_copy_inst(src=t0, dst=self.cur_stack_dst(store_dst))
             else:
                 self.visit(if_suite)
 
@@ -263,7 +285,7 @@ class InstBuilder(Visitor):
         suite = stmt.children[1]
         init_jump = self._push_jump_inst()
         jump_label = self._insert_label()
-        with self.free_register(test, store_dst=store_dst) as s0:
+        with self.free_register(store_dst=store_dst) as s0:
             r0 = self.visit(test, store_dst=s0)
 
         con_jump_label = self._push_conditional_jump_inst(r0, None)
@@ -291,12 +313,8 @@ class InstBuilder(Visitor):
 
     def reduce_expr(self, tree, store_dst=None, **kwargs):
         lst = tree.children.copy()
-        expr_eval_dst = store_dst
 
-        if LAExprRearrange(store_dst, tree).tree is None:
-            # store_dst is an id hence check if it can be used directly else
-            # use a tmp register
-            expr_eval_dst = None
+        expr_eval_dst = None if len(lst) >= 5 else store_dst
         with self.free_register(store_dst=expr_eval_dst) as t0:
             eval_store = t0
             while len(lst) >= 3:
@@ -307,7 +325,7 @@ class InstBuilder(Visitor):
             return eval_store
 
     def unary_operator(self, op, right, store_dst=None):
-        with self.free_register(right, store_dst=store_dst) as s0:
+        with self.free_register(store_dst=store_dst) as s0:
             r0 = self.visit(right, store_dst=s0)
 
         dst = self.cur_stack_dst(store_dst)
@@ -318,9 +336,9 @@ class InstBuilder(Visitor):
 
     def operator(self, left, op: Token, right, store_dst=None, branch_dst=None):
 
-        with self.free_register(LACanAssign(left).result, store_dst=store_dst) as s0:
+        with self.free_register(store_dst=store_dst) as s0:
             r0 = self.visit(left, store_dst=s0)
-            with self.free_register() as s1:
+            with self.free_register(eval_as_const=LAIsConst(self, right).result) as s1:
                 r1 = self.visit(right, store_dst=s1)
                 pass
 
@@ -370,7 +388,7 @@ class InstBuilder(Visitor):
         return self.visit(expr.children[0], store_dst=store_dst)
 
     def subscript(self, expr, store_dst=None):
-        return self.visit(expr.children[0],  store_dst=store_dst)
+        return self.visit(expr.children[0], store_dst=store_dst)
 
     def expr(self, expr, store_dst=None, **kwargs):
         return self.reduce_expr(expr, store_dst=store_dst)
@@ -389,19 +407,71 @@ class InstBuilder(Visitor):
         return dst
 
     def call(self, expr, store_dst=None, **kwargs):
-        with self.free_register(store_dst=store_dst) as dst:
-            ret = None
-            if isinstance(expr.children[0], Tree):
-                tree = expr.children[0]
-                if len(expr.children) > 1 and isinstance(expr.children[1], Tree) and expr.children[1].data == 'arguments':
-                    if tree.children[0].value in self.vtable:
-                        arguments = expr.children[1]
-                        ret = self.vtable[tree.children[0].value].var(
-                            dst,
-                            arguments.children)
-            if ret:
-                return ret
-            return dst
+
+        if not isinstance(expr.children[0], Tree):
+            raise MipsCodeError("error call")
+
+        tree = expr.children[0]
+        if tree.children[0].value not in self.vtable:
+            raise MipsNameError(tree.children[0].value)
+
+        arguments = []
+        if len(expr.children) > 1 and isinstance(expr.children[1], Tree) and expr.children[1].data == 'arguments':
+            arguments = expr.children[1].children
+        function = self.vtable[tree.children[0].value]
+
+        if not  isinstance(function, FunctionBuiltIn):
+            with self.free_register(store_dst=store_dst) as dst:
+                return function.var(dst, arguments)
+
+
+        dest_container = self.free_register(store_dst=store_dst)
+
+        with dest_container as dst:
+
+            if len(arguments) < function.no_args:
+                raise MipsTypeErrorMissingArguments(
+                    function_name=tree.children[0].value,
+                    no_args_missing=function.no_args - len(arguments))
+
+            if len(arguments) > function.no_args:
+                raise MipsTypeErrorToManyArguments(function_name=tree.children[0].value,
+                                                   no_args_given=len(arguments),
+                                                   no_args_required=function.no_args)
+
+            left = arguments[0] if function.no_args >= 1 else None
+            right = arguments[1] if function.no_args == 2 else None
+            with self.free_register(store_dst=store_dst) as s0:
+                if not left:
+                    if function.returns:
+                        self._add_instruction(f'{function.inst} {dst}',
+                                              f'{function.inst} -> {dst}')
+                        return dst
+                    else:
+                        raise MipsCodeError("no return and no argument function")
+
+                r0 = self.visit(left, store_dst=s0)
+                if right:
+                    with self.free_register(eval_as_const=LAIsConst(self, right).result) as s1:
+                        r1 = self.visit(right, store_dst=s1)
+                        if function.returns:
+                            self._add_instruction(f'{function.inst} {dst} {r0} {r1}',
+                                                  f'{function.inst}({r0}, {r1}) -> {dst}')
+                            return dst
+                        else:
+                            self._add_instruction(f'{function.inst} {r0} {r1}',
+                                                  f'{function.inst}({r0}, {r1})')
+                            return "0"
+                else:
+                    if function.returns:
+                        self._add_instruction(f'{function.inst} {dst} {r0}',
+                                              f'{function.inst}({r0}) -> {dst}')
+                        return dst
+                    else:
+                        self._add_instruction(f'{function.inst} {r0}',
+                                              f'{function.inst}({r0})')
+                        return "0"
+        raise Exception("ERROR CALL")
 
     def attr_get(self, expr, store_dst=None, **kwargs):
         if store_dst:
@@ -454,10 +524,12 @@ class InstBuilder(Visitor):
     def _load_reagent(self, dst, device: Device, mode_str: str, reagent_str: str):
         if device not in self.device_table.values():
             raise MipsAttributeError(device, mode_str)
-        self._add_instruction(f'lr {dst} {device.device} {mode_str} {reagent_str}', f'load reagent {device.device} {mode_str} {reagent_str} to {dst}')
+        self._add_instruction(f'lr {dst} {device.device} {mode_str} {reagent_str}',
+                              f'load reagent {device.device} {mode_str} {reagent_str} to {dst}')
 
     def _load_attr_slot(self, dst, device: Device, prop: str, slot):
-        self._add_instruction(f'ls {dst} {device.device} {slot} {prop}', f'load {device.device} {prop}[{slot}] to {dst}')
+        self._add_instruction(f'ls {dst} {device.device} {slot} {prop}',
+                              f'load {device.device} {prop}[{slot}] to {dst}')
 
     def _save_attr(self, var, device: Device, prop: str):
         if prop.startswith("Reagent"):

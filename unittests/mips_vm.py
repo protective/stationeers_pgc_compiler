@@ -1,3 +1,4 @@
+import math
 import traceback
 
 from compiler.compiler import Compiler
@@ -14,6 +15,8 @@ class MIPSVM:
         self._no_inst = 0
         self._program = []
         self.mips_len = None
+        self.highest_register_used = 0
+        self._total_sleep = 0
         if program:
             mips = Compiler().compile(program)
             self.parse(mips)
@@ -56,11 +59,16 @@ class MIPSVM:
             args = line.split(' ')
             self._program.append(args)
 
+    def get_total_sleep(self)-> float:
+        return self._total_sleep
+
     def get_variable(self, variable):
         return float(self._get_variable(variable))
 
     def _get_variable(self, variable):
         if variable in self._registers:
+            reg_id = int(variable[1:])
+            self.highest_register_used = max(reg_id, self.highest_register_used)
             return self._registers[variable]
         elif variable in self._indput:
             return self._indput[variable]
@@ -137,6 +145,44 @@ class MIPSVM:
         elif inst == 'bne':
             if float(self._get_variable(args[1])) != float(self._get_variable(args[2])):
                 self._pc = int(args[3])
+        elif inst == 'min':
+            self._set_variable(args[1], str(min(float(self._get_variable(args[2])), float(self._get_variable(args[3])))))
+        elif inst == 'max':
+            self._set_variable(args[1], str(max(float(self._get_variable(args[2])), float(self._get_variable(args[3])))))
+        elif inst == 'sleep':
+            self._total_sleep += float(self._get_variable(args[1]))
+        elif inst == 'rand':
+            # Set random to 0.5 for unitest
+            self._set_variable(args[1], str(float(0.5)))
+        elif inst == 'cos':
+            self._set_variable(args[1], str(math.cos(float(self._get_variable(args[2])))))
+        elif inst == 'sin':
+            self._set_variable(args[1], str(math.sin(float(self._get_variable(args[2])))))
+        elif inst == 'tam':
+            self._set_variable(args[1], str(math.tan(float(self._get_variable(args[2])))))
+        elif inst == 'acos':
+            self._set_variable(args[1], str(math.acos(float(self._get_variable(args[2])))))
+        elif inst == 'asin':
+            self._set_variable(args[1], str(math.asin(float(self._get_variable(args[2])))))
+        elif inst == 'atam':
+            self._set_variable(args[1], str(math.atan(float(self._get_variable(args[2])))))
+        elif inst == 'mod':
+            self._set_variable(args[1], str(float(self._get_variable(args[2])) % float(self._get_variable(args[3]))))
+        elif inst == 'abs':
+            self._set_variable(args[1], str(abs(float(self._get_variable(args[2])))))
+        elif inst == 'exp':
+            self._set_variable(args[1], str(math.exp(float(self._get_variable(args[2])))))
+        elif inst == 'floor':
+            self._set_variable(args[1], str(math.floor(float(self._get_variable(args[2])))))
+        elif inst == 'ceil':
+            self._set_variable(args[1], str(math.ceil(float(self._get_variable(args[2])))))
+        elif inst == 'log':
+            self._set_variable(args[1], str(math.log(float(self._get_variable(args[2])))))
+        elif inst == 'round':
+            self._set_variable(args[1], str(round(float(self._get_variable(args[2])))))
+        elif inst == 'sqrt':
+            self._set_variable(args[1], str(math.sqrt(float(self._get_variable(args[2])))))
+
         return True
 
     def execute(self, indput=None):

@@ -1,9 +1,9 @@
 from lark.lexer import Token
 
-from compiler.Visitor import Visitor
+from compiler.Visitor import CompileEnv
 
 
-class ExprLookAhead(Visitor):
+class ExprLookAhead(CompileEnv):
 
     def reduce_expr(self, tree):
         lst = tree.children.copy()

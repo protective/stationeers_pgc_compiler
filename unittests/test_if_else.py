@@ -1,3 +1,5 @@
+import pytest
+
 from unittests.mips_vm import MIPSVM
 
 
@@ -93,6 +95,7 @@ if -1:
     assert vm.get_variable('o') == 1
     assert vm.mips_len == 2
 
+
 def test_if_else_false():
     program = """
 if 0:
@@ -104,6 +107,7 @@ else:
     vm.execute()
     assert vm.get_variable('o') == 2
     assert vm.mips_len == 4
+
 
 def test_if_else_true():
     program = """
@@ -147,6 +151,7 @@ else:
     assert vm.get_variable('o') == 1
     assert vm.mips_len == 7
 
+
 def test_if_then_else_false_true():
     program = """
 if 0:
@@ -161,6 +166,7 @@ else:
     assert vm.get_variable('o') == 2
     assert vm.mips_len == 7
 
+
 def test_if_then_else_false_false():
     program = """
 if 0:
@@ -174,6 +180,7 @@ else:
     vm.execute()
     assert vm.get_variable('o') == 3
     assert vm.mips_len == 7
+
 
 def test_if_else_ternary_false_expr():
     program = """
@@ -289,3 +296,83 @@ else:
     vm = MIPSVM(program)
     vm.execute()
     assert vm.get_variable('o') == 20
+
+
+def test_ternary_call_false():
+    program = """
+out = min(1, 2) if 0 else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 4
+    assert vm.mips_len <= 5
+
+
+def test_ternary_call_true():
+    program = """
+out = min(1, 2) if 1 else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 1
+    assert vm.mips_len <= 5
+
+
+def test_ternary_call_cond_false():
+    program = """
+out = min(1, 2) if min(0, 1) else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 4
+    assert vm.mips_len <= 6
+
+def test_ternary_call_cond_true():
+    program = """
+out = min(1, 2) if max(0, 1) else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 1
+    assert vm.mips_len <= 6
+
+
+@pytest.mark.skip
+def test_ternary_call_false_improve():
+    program = """
+out = min(1, 2) if 0 else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 4
+    assert vm.mips_len <= 4
+
+@pytest.mark.skip
+def test_ternary_call_true_improve():
+    program = """
+out = min(1, 2) if 1 else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 1
+    assert vm.mips_len <= 4
+
+@pytest.mark.skip
+def test_ternary_call_cond_false_improve():
+    program = """
+out = min(1, 2) if min(0, 1) else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 4
+    assert vm.mips_len <= 4
+
+@pytest.mark.skip
+def test_ternary_call_cond_true_improve():
+    program = """
+out = min(1, 2) if max(0, 1) else max(3, 4)
+"""
+    vm = MIPSVM(program)
+    vm.execute()
+    assert vm.get_variable('o') == 1
+    assert vm.mips_len <= 4
