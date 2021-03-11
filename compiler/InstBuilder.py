@@ -283,17 +283,13 @@ class InstBuilder(Visitor):
     def while_stmt(self, stmt, store_dst=None):
         test = stmt.children[0]
         suite = stmt.children[1]
-        init_jump = self._push_jump_inst()
         jump_label = self._insert_label()
         with self.free_register(store_dst=store_dst) as s0:
             r0 = self.visit(test, store_dst=s0)
 
-        con_jump_label = self._push_conditional_jump_inst(r0, None)
-        end_jump = self._push_jump_inst()
+        end_jump = self._push_conditional_jump_inst(r0, None, eq=True)
 
-        self._insert_label(con_jump_label)
         self.visit(suite)
-        self._insert_label(init_jump)
         self._push_jump_inst(jump_label)
         self._insert_label(end_jump)
 

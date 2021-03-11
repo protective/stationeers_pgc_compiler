@@ -56,7 +56,7 @@ class Compiler:
         self.labels = builder.labels
         self.resolve_labels()
         self.validate()
-        return "\n".join([f'{line:20} // {i:2}: {desc}' for i, (line, desc) in enumerate(self.final_program)])
+        return "\n".join([f'{line:25} // {i:2}: {desc}' for i, (line, desc) in enumerate(self.final_program)])
 
     def resolve_labels(self):
 

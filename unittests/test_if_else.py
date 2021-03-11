@@ -376,3 +376,17 @@ out = min(1, 2) if max(0, 1) else max(3, 4)
     vm.execute()
     assert vm.get_variable('o') == 1
     assert vm.mips_len <= 4
+
+
+
+def test_tmp():
+    program = """
+sensor = device(d0, "Sensor")
+valve = device(d1, "Valve")
+while sensor.Pressure > 1000:
+    valve.On = True
+    yield_tick
+valve.On = False
+"""
+    vm = MIPSVM(program)
+    vm.execute({('d0', 'Pressure'): 1, ('db', 'Setting'): 1})
